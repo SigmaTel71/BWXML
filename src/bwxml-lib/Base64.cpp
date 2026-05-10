@@ -35,7 +35,7 @@ namespace B64
 		> binary_t;
 
 
-	std::string Encode(std::string src)
+	std::string Encode(std::string& src)
 	{
 		for (int bytesToPad = src.length() % 3; bytesToPad != 0; --bytesToPad)
 			src.push_back('='); // fuck you, boost!
@@ -43,14 +43,14 @@ namespace B64
 		return std::string(base64_t(src.begin()), base64_t(src.end()));
 	}
 
-	std::string Decode(std::string src)
+	std::string Decode(std::string& src)
 	{
 		while ((src.length()) % 4 != 0) // fuck you, boost
 			src.push_back(0);
 		return std::string(binary_t(src.begin()), binary_t(src.end()));
 	}
 
-	bool Is(std::string src)
+	bool Is(std::string& src)
 	{
 		try
 		{

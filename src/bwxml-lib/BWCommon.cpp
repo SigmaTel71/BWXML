@@ -113,9 +113,9 @@ namespace BWPack
 		}
 
 		//check if we can B64 this
-		if (B64::Is(strVal))
+		if (B64::Is(const_cast<std::string&>(strVal)))
 		{
-			return rawDataBlock(BW_Blob, B64::Decode(strVal));
+			return rawDataBlock(BW_Blob, B64::Decode(const_cast<std::string&>(strVal)));
 		}
 
 		// fallback
