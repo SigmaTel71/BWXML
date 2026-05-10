@@ -17,8 +17,7 @@ limitations under the License.
 #include "BWReader.h"
 #include "BWWriter.h"
 
-#include <boost/filesystem.hpp>
-using namespace boost::filesystem;
+#include <filesystem>
 
 #include <boost/thread.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -37,12 +36,12 @@ void convert(std::string src, std::string dest, bool doPack)
 		BWPack::BWXMLReader(src).saveTo(dest);
 }
 
-std::string FindCommonPrefix(const std::vector<path>& paths)
+std::string FindCommonPrefix(const std::vector<std::filesystem::path>& paths)
 {
 	std::string s1, s2;
 	if (paths.size() < 2)
 		return "";
-	auto lenCmp = [](const path& p1, const path& p2){return p1.string().length() < p2.string().length(); };
+	auto lenCmp = [](const std::filesystem::path& p1, const std::filesystem::path& p2){return p1.string().length() < p2.string().length(); };
 	s1 = (*std::min_element(paths.begin(), paths.end(), lenCmp)).string();
 	s2 = (*std::max_element(paths.begin(), paths.end(), lenCmp)).string();
 
@@ -55,7 +54,7 @@ std::string FindCommonPrefix(const std::vector<path>& paths)
 		}
 	}
 
-	path s1p(s1);
+	std::filesystem::path s1p(s1);
 	if (!exists(s1p))
 		s1 = s1p.parent_path().string();
 	return s1;
@@ -63,7 +62,7 @@ std::string FindCommonPrefix(const std::vector<path>& paths)
 
 int main(int argc, char* argv[])
 {
-	std::cout << "BWXML v1.0.5 by hedger" << std::endl;
+	std::cout << "BWXML v1.1.0 by hedger" << std::endl;
 
 	bpo::options_description desc("Allowed options");
 	desc.add_options()
@@ -114,18 +113,20 @@ int main(int argc, char* argv[])
 	std::string destdir = vm["output"].as<std::string>();
 	destdir.append("/");
 
-	std::vector<path>	paths, valid_paths;
+	std::vector<std::filesystem::path>	paths, valid_paths;
 	std::cout << "Collecting files... " ;
 	try
 	{
 		for (auto it=inputPaths.begin(); it != inputPaths.end(); ++it)
 		{
-			path current = path(*it);
+			std::filesystem::path current = std::filesystem::path(*it);
 			if (!exists(current))
 				std::cout << "Path '" << *it << "' is not found or not accessible, skipping" << std::endl;
 			if (is_directory(current))
-				std::copy(recursive_directory_iterator(current, symlink_option::recurse), 
-				recursive_directory_iterator(), back_inserter(paths));
+				std::copy(
+					std::filesystem::recursive_directory_iterator(current, std::filesystem::directory_options::follow_directory_symlink),
+					std::filesystem::recursive_directory_iterator(), back_inserter(paths)
+				);
 			if (is_regular_file(current))
 				paths.push_back(current);
 		}
@@ -133,7 +134,7 @@ int main(int argc, char* argv[])
 		std::cout << "filtering... ";
 
 		std::copy_if(paths.begin(), paths.end(), std::back_inserter(valid_paths),
-			[](const path& p){return is_regular_file(p);});
+			[](const std::filesystem::path& p){return is_regular_file(p);});
 
 		std::cout << "done. \nFound " << valid_paths.size() << " file(s), processing to " << destdir << std::endl;
 
@@ -146,7 +147,7 @@ int main(int argc, char* argv[])
 
 		std::string commonPrefix =	FindCommonPrefix(valid_paths);
 		if (commonPrefix.empty())
-			commonPrefix = path(valid_paths[0]).parent_path().string();
+			commonPrefix = std::filesystem::path(valid_paths[0]).parent_path().string();
 
 		int nThreads = vm["threads"].as<int>();
 		std::cout << "Starting a pool with " << nThreads << " workers" << std::endl;
@@ -160,7 +161,7 @@ int main(int argc, char* argv[])
 					std::cout << rel_path << " : ";
 				std::string target_path = destdir + rel_path;
 
-				path _target_path = path(target_path);
+				std::filesystem::path _target_path = std::filesystem::path(target_path);
 				_target_path = _target_path.parent_path();
 				if (!exists(_target_path))
 					create_directories(_target_path);
