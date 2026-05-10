@@ -16,12 +16,17 @@ limitations under the License.
 
 #include "Base64.h"
 
+#ifdef BWXML_USE_BOOST_BASE64
 #include <boost/archive/iterators/base64_from_binary.hpp>
 #include <boost/archive/iterators/binary_from_base64.hpp>
 #include <boost/archive/iterators/transform_width.hpp>
+#elif defined(BWXML_USE_TOBIASLOCKER_BASE64)
+#include <base64.hpp>
+#endif
 
 namespace B64
 {
+#ifdef BWXML_USE_BOOST_BASE64
 	using namespace boost::archive::iterators;
 
 	typedef
@@ -34,20 +39,28 @@ namespace B64
 		binary_from_base64<std::string::const_iterator>, 8, 6
 		> binary_t;
 
-
+#endif
 	std::string Encode(std::string& src)
 	{
+#ifdef BWXML_USE_BOOST_BASE64
 		for (int bytesToPad = src.length() % 3; bytesToPad != 0; --bytesToPad)
 			src.push_back('='); // fuck you, boost!
 
 		return std::string(base64_t(src.begin()), base64_t(src.end()));
+#elif defined(BWXML_USE_TOBIASLOCKER_BASE64)
+		return base64::to_base64(src);
+#endif
 	}
 
 	std::string Decode(std::string& src)
 	{
+#ifdef BWXML_USE_BOOST_BASE64
 		while ((src.length()) % 4 != 0) // fuck you, boost
 			src.push_back(0);
 		return std::string(binary_t(src.begin()), binary_t(src.end()));
+#elif defined(BWXML_USE_TOBIASLOCKER_BASE64)
+		return base64::from_base64(src);
+#endif
 	}
 
 	bool Is(std::string& src)
