@@ -7,6 +7,7 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 option(USE_TOBIASLOCKER_BASE64 "Use header-only Base64 implementation by Tobias Locker instead of Boost" OFF)
+option(USE_PUGIXML "Use pugixml parser and writer by Arseny Kapoulkine instead of Boost" OFF)
 
 set(BUILD_SHARED_LIBS OFF)
 
@@ -31,6 +32,14 @@ else()
     list(APPEND BWXML_LIB_SOURCES "src/bwxml-lib/Base64.cpp")
 endif()
 
+if(USE_PUGIXML)
+    list(APPEND BWXML_LIB_SOURCES "src/bwxml-lib/BWReaderPugi.cpp"
+                                  "src/bwxml-lib/BWWriterPugi.cpp")
+else()
+    list(APPEND BWXML_LIB_SOURCES "src/bwxml-lib/BWReader.cpp"
+                                  "src/bwxml-lib/BWWriter.cpp")
+endif()
+
 add_library(libbwxml ${BWXML_LIB_SOURCES})
 
 if(USE_TOBIASLOCKER_BASE64)
@@ -40,6 +49,11 @@ if(USE_TOBIASLOCKER_BASE64)
     endif()
 
     target_include_directories(libbwxml PRIVATE ${TOBIASLOCKER_BASE64_INCLUDE})
+endif()
+
+if(USE_PUGIXML)
+    find_package(pugixml CONFIG REQUIRED)
+    target_link_libraries(libbwxml pugixml::pugixml)
 endif()
 
 target_link_libraries(libbwxml ${Boost_LIBRARIES})
