@@ -1,5 +1,5 @@
 /*
-Copyright 2013-2014 hedger
+Copyright 2026 Vitaly Orekhov
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,14 +18,10 @@ limitations under the License.
 #include "Base64.h"
 #include "BWCommon.h"
 
-#include <sstream>
-#include <boost/property_tree/xml_parser.hpp>
-#include <boost/lexical_cast.hpp>
-#include <boost/version.hpp>
+#include <filesystem>
 
 namespace BWPack
 {
-	using boost::property_tree::ptree;
 	using namespace BigWorld;
 
 	BWXMLReader::BWXMLReader(const std::string& fname) : mStream(fname)
@@ -39,18 +35,17 @@ namespace BWPack
 			throw std::runtime_error("Unsupported file version");
 		ReadStringTable();
 
-		mTree.put_child("root", ReadSection());
+		pugi::xml_node decl = doc.prepend_child(pugi::node_declaration);
+		decl.append_attribute("version") = "1.0";
+		decl.append_attribute("encoding") = "utf-8";
+
+		mTree = doc.append_child("root");
+		ReadSection(mTree);
 	};
 
 	void BWXMLReader::saveTo(const std::string& destname) const
 	{
-		#if BOOST_VERSION >= 105600
-			static auto settings = boost::property_tree::xml_writer_make_settings<ptree::key_type>('\t', 1);
-		#else
-			static auto settings = boost::property_tree::xml_writer_make_settings('\t', 1);
-		#endif
-
-		boost::property_tree::write_xml(destname, mTree, std::locale(), settings);
+		doc.save_file(destname.c_str(), "\t", pugi::format_indent | pugi::format_save_file_text);
 	}
 
 	void BWXMLReader::ReadStringTable()
@@ -62,9 +57,9 @@ namespace BWPack
 		//std::cout << "Collected " << mStrings.size() << " strings." << std::endl;
 	};
 
-	void BWXMLReader::readData( BigWorld::DataDescriptor descr, boost::property_tree::ptree& current_node, uint32_t prev_offset )
+	void BWXMLReader::readData(BigWorld::DataDescriptor descr, pugi::xml_node& current_node, uint32_t prev_offset)
 	{
-		current_node.clear();
+		current_node.remove_children();
 		uint32_t startPos = prev_offset, endPos = descr.offset();
 		uint32_t var_size = endPos - startPos;
 		assert(var_size >= 0);
@@ -73,33 +68,34 @@ namespace BWPack
 		switch(descr.typeId())
 		{
 		case BW_Section:
-			current_node = ReadSection(); //yay recursion!
+			ReadSection(current_node); //yay recursion!
 			break;
 
 		case BW_String:
 			contentBuffer << mStream.getString(var_size);
+			if (var_size > 0)
+				current_node.text().set(contentBuffer.str());
 			if (PackBuffer(contentBuffer.str()).type != BW_String)
-				current_node.put("<xmlcomment>", "BW_String");
-			current_node.put_value(contentBuffer.str());
+				current_node.append_child(pugi::node_comment).set_value("BW_String");
 			break;
 
 		case BW_Int:
 			switch (var_size)
 			{
 			case 8:
-				current_node.put_value(mStream.get<int64_t>());
+				current_node.text().set(mStream.get<int64_t>());
 				break;
 			case 4:
-				current_node.put_value(mStream.get<int32_t>());
+				current_node.text().set(mStream.get<int32_t>());
 				break;
 			case 2:
-				current_node.put_value(mStream.get<int16_t>());
+				current_node.text().set(mStream.get<int16_t>());
 				break;
 			case 1:
-				current_node.put_value(mStream.get<int8_t>());
+				current_node.text().set(mStream.get<int8_t>());
 				break;
 			case 0:
-				current_node.put_value(0);
+				current_node.text().set(0);
 				break;
 			default:
 				throw std::runtime_error("Unsupported int size!");
@@ -119,7 +115,7 @@ namespace BWPack
 							contentBuffer << " ";
 						contentBuffer << mStream.get<float>();
 					}
-					current_node.put("row" + boost::lexical_cast<std::string>(i), contentBuffer.str());
+					current_node.append_child("row" + std::to_string(i)).set_value(contentBuffer.str());
 					contentBuffer.str(""); // clearing our buffer
 				}
 				break;
@@ -131,21 +127,21 @@ namespace BWPack
 					contentBuffer << " ";
 				contentBuffer << mStream.get<float>();
 			}
-			current_node.put_value(contentBuffer.str());
+			current_node.text().set(contentBuffer.str());
 			break;
 
 		case BW_Bool:
-			current_node.put_value((var_size != 0));
+			current_node.text().set(var_size != 0 ? true : false);
 			mStream.getString(var_size);
 			break;
 
 		case BW_Blob:
-			current_node.put_value(B64::Encode(mStream.getString(var_size)));
+			current_node.text().set(B64::Encode(mStream.getString(var_size)));
 			break;
 
 		case BW_Enc_blob:
 			mStream.getString(var_size); // TBD?
-			current_node.put_value("TYPE_ENCRYPTED_BLOB is (yet) unsupported!");
+			current_node.text().set("TYPE_ENCRYPTED_BLOB is (yet) unsupported!");
 			std::cerr <<"unsupported section TYPE_ENCRYPTED_BLOB!" << std::endl;
 			break;
 
@@ -154,9 +150,8 @@ namespace BWPack
 		}
 	}
 
-	ptree BWXMLReader::ReadSection()
+	void BWXMLReader::ReadSection(pugi::xml_node& parent_node)
 	{
-		ptree current_node;
 		int nChildren = mStream.get<uint16_t>();
 
 		DataDescriptor ownData = mStream.get<DataDescriptor>();
@@ -168,17 +163,14 @@ namespace BWPack
 			children.push_back(mStream.get<DataNode>());
 		}
 
-		readData(ownData, current_node, 0);
+		readData(ownData, parent_node, 0);
 
 		int prev_offset = ownData.offset();
-		for (auto it = children.begin(); it != children.end(); ++it)
+		for (auto& child : children)
 		{
-			assert(it->nameIdx < mStrings.size());
-			//keys may contain dots, they confuse the ptree
-			auto path = ptree::path_type(mStrings[it->nameIdx], '\0'); // so we make a custom path
-			readData(it->data, current_node.add(path, ""), prev_offset); 
-			prev_offset = it->data.offset();
+			assert(child.nameIdx < mStrings.size());
+			readData(child.data, parent_node.append_child(mStrings[child.nameIdx]), prev_offset);
+			prev_offset = child.data.offset();
 		}
-		return current_node;
 	}
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2013-2014 hedger
+Copyright 2026 Vitaly Orekhov
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@ limitations under the License.
 
 #pragma once
 
+#include <string>
 #include <vector>
-#include <tuple>
-#include <boost/property_tree/ptree.hpp>
+#include <pugixml.hpp>
 
 #include "BW.hpp"
 #include "BWCommon.h"
@@ -34,16 +34,16 @@ namespace BWPack
 
 	protected:
 		std::vector<std::string> mStrings;
-		boost::property_tree::ptree mTree;
+		pugi::xml_document mTree;
 
 		typedef std::vector<BWPack::dataBlock> dataArray;
 
 		void collectStrings();
 		uint16_t resolveString(const std::string& str) const;
-		void treeWalker(const boost::property_tree::ptree& node);
+		void treeWalker(const pugi::xml_node& node);
 
 		BigWorld::DataDescriptor BuildDescriptor(BWPack::rawDataBlock block, uint32_t prevOffset) const;
-		BWPack::rawDataBlock serializeNode(const boost::property_tree::ptree& nodeVal, bool simple) const;
-		std::string serializeSection(const boost::property_tree::ptree& section) const;
+		BWPack::rawDataBlock serializeNode(const pugi::xml_node& node_value, bool simple) const;
+		std::string serializeSection(const pugi::xml_node& section) const;
 	};
 }

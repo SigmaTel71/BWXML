@@ -1,5 +1,5 @@
 /*
-Copyright 2013-2014 hedger
+Copyright 2026 Vitaly Orekhov
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@ limitations under the License.
 
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "DataStream.h"
 #include "BW.hpp"
-#include <boost/property_tree/ptree.hpp>
+#include <pugixml.hpp>
 
 namespace BWPack
 {
@@ -33,10 +34,11 @@ namespace BWPack
 	protected:
 		IO::StreamReader mStream;
 		std::vector<std::string> mStrings;
-		boost::property_tree::ptree mTree;
+		pugi::xml_node mTree;
+		pugi::xml_document doc;
 
 		void ReadStringTable();
-		boost::property_tree::ptree ReadSection();
-		void readData(BigWorld::DataDescriptor descr, boost::property_tree::ptree& current_node, uint32_t prev_offset);
+		void readData(BigWorld::DataDescriptor descr, pugi::xml_node& current_node, uint32_t prev_offset);
+		void ReadSection(pugi::xml_node& parent_node);
 	};
 }

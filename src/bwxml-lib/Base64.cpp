@@ -1,5 +1,5 @@
 /*
-Copyright 2013-2014 hedger
+Copyright 2026 Vitaly Orekhov
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,41 +16,21 @@ limitations under the License.
 
 #include "Base64.h"
 
-#include <boost/archive/iterators/base64_from_binary.hpp>
-#include <boost/archive/iterators/binary_from_base64.hpp>
-#include <boost/archive/iterators/transform_width.hpp>
+#include <base64.hpp>
 
 namespace B64
 {
-	using namespace boost::archive::iterators;
-
-	typedef
-		base64_from_binary<
-		transform_width<std::string::const_iterator, 6, 8>
-		> base64_t;
-
-	typedef
-		transform_width<
-		binary_from_base64<std::string::const_iterator>, 8, 6
-		> binary_t;
-
-
-	std::string Encode(std::string src)
+	std::string Encode(std::string& src)
 	{
-		for (int bytesToPad = src.length() % 3; bytesToPad != 0; --bytesToPad)
-			src.push_back('='); // fuck you, boost!
-
-		return std::string(base64_t(src.begin()), base64_t(src.end()));
+		return base64::to_base64(src);
 	}
 
-	std::string Decode(std::string src)
+	std::string Decode(std::string& src)
 	{
-		while ((src.length()) % 4 != 0) // fuck you, boost
-			src.push_back(0);
-		return std::string(binary_t(src.begin()), binary_t(src.end()));
+		return base64::from_base64(src);
 	}
 
-	bool Is(std::string src)
+	bool Is(std::string& src)
 	{
 		try
 		{
@@ -58,7 +38,7 @@ namespace B64
 			bool ret = !Encode(tmp).compare(src);
 			return (ret);
 		}
-		catch (...) // (const boost::archive::iterators::dataflow_exception&)
+		catch (...)
 		{
 			return false;
 		}

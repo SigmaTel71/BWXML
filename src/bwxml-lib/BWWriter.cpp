@@ -1,5 +1,5 @@
 /*
-Copyright 2013-2014 hedger
+Copyright 2026 Vitaly Orekhov
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,59 +15,57 @@ limitations under the License.
 */
 
 #include "BWWriter.h"
-#include "Base64.h"
-#include "BWCommon.h"
 
-#include <boost/property_tree/xml_parser.hpp>
-#include <boost/algorithm/string.hpp>
-#include <boost/lexical_cast.hpp>
 #include <algorithm>
-#include <boost/assign.hpp>
+#include <array>
 
 namespace BWPack
 {
-	using boost::property_tree::ptree;
 	using namespace BigWorld;
 
 	BWXMLWriter::BWXMLWriter(const std::string& fname)
 	{
 		try
 		{
-			boost::property_tree::xml_parser::read_xml(fname, mTree, 
-				boost::property_tree::xml_parser::trim_whitespace);
+			mTree.load_file(fname.c_str(), pugi::parse_default | pugi::parse_trim_pcdata | pugi::parse_comments);
 		}
 		catch(...)
 		{
 			throw std::runtime_error("XML parsing error");
 		};
-		if (mTree.size() != 1)
-			throw std::runtime_error("XML file must contain only 1 root level node");
 
-		mTree.swap(mTree.begin()->second); // swapping the whole tree to its first node
+		if (std::distance(mTree.begin(), mTree.end()) != 1)
+			throw std::runtime_error("XML file must contain only 1 root level node");
 	}
 
-	void BWXMLWriter::treeWalker(const ptree& node)
+	void BWXMLWriter::treeWalker(const pugi::xml_node& node)
 	{
-		for (auto subNode=node.begin(); subNode != node.end(); ++subNode)
+		if (node.type() == pugi::node_element && node.parent() != node.root())
+			mStrings.push_back(node.name());
+
+		for (auto& subNode : node)
 		{
-			mStrings.push_back(subNode->first);
-			treeWalker(subNode->second);
+			if (subNode.type() == pugi::node_element)
+				mStrings.push_back(subNode.name());
+
+			for (const auto& child : subNode.children())
+				treeWalker(child);
 		}
 	}
 
 	void BWXMLWriter::collectStrings()
 	{
 		mStrings.clear();
-		treeWalker(mTree);
+		treeWalker(mTree.first_child());
 		std::sort(mStrings.begin(), mStrings.end());
 		mStrings.erase(std::unique(mStrings.begin(), mStrings.end()),
 			mStrings.end());
 
-		static std::vector<std::string> namesToClear = boost::assign::list_of\
-			("<xmlcomment>")("row0")("row1")("row2")("row3");	// utility nodes
-		for (auto str=namesToClear.begin(); str!=namesToClear.end(); ++str)
+		static std::array<std::string, 4> namesToClear = { "row0", "row1", "row2", "row3" };
+
+		for (const auto& name : namesToClear)
 		{
-			auto strIdx = std::find(mStrings.begin(), mStrings.end(), *str);
+			auto strIdx = std::find(mStrings.begin(), mStrings.end(), name);
 			if (strIdx != mStrings.end())
 				mStrings.erase(strIdx);
 		}
@@ -86,24 +84,25 @@ namespace BWPack
 	}
 
 	// 'simple' indicates that we need the node's exact value, even if it has children
-	rawDataBlock BWXMLWriter::serializeNode(const boost::property_tree::ptree& node_value, bool simple) const
+	rawDataBlock BWXMLWriter::serializeNode(const pugi::xml_node& node_value, bool simple) const
 	{
-		if (node_value.size() == BW_MATRIX_NROWS) // maybe that's a matrix?..
+		size_t nodeValSize = std::distance(node_value.children().begin(), node_value.children().end());
+		if (nodeValSize == BW_MATRIX_NROWS) // maybe that's a matrix?..
 		{
-			std::vector<boost::optional< const ptree& > > rows;
+			std::vector<pugi::xml_node> rows;
 			for (int i=0; i<BW_MATRIX_NROWS; ++i)
 			{
-				auto row = node_value.get_child_optional("row"+boost::lexical_cast<std::string>(i));
+				auto row = node_value.child("row" + std::to_string(i));
 				if (!row) // bad luck.
 					break;
-				rows.push_back(row);
+				rows.emplace_back(row);
 			}
 			if (rows.size() == BW_MATRIX_NROWS) // we've found all 4 required rows
 			{
 				std::stringstream buffer;
-				for (auto it=rows.begin(); it!=rows.end(); ++it)
+				for (const auto row : rows)
 				{
-					rawDataBlock block = PackBuffer((*it)->data());
+					rawDataBlock block = PackBuffer(row.child_value());
 					assert(block.type == BW_Float);	// better safe than sorry
 					buffer << block.data;
 				}
@@ -111,14 +110,28 @@ namespace BWPack
 			}
 		}
 
-		if (!simple && node_value.size() && (!node_value.get_child_optional("<xmlcomment>"))) // has sub-nodes
+		bool forceStringSerialization = node_value.find_child([](pugi::xml_node node) {
+			return node.type() == pugi::node_comment && std::string_view(node.value()) == "BW_String";
+		});
+
+		auto serializeString = [&](const pugi::xml_node& node)
+			{
+				if (forceStringSerialization)
+					return rawDataBlock(BW_String, node.child_value());
+
+				return PackBuffer(node.child_value());
+			};
+
+		if (!simple && nodeValSize) // has sub-nodes
 		{
-			return rawDataBlock(BW_Section, serializeSection(node_value));
+			for (const auto& child : node_value)
+			{
+				if (child.type() == pugi::node_element)
+					return rawDataBlock(BW_Section, serializeSection(node_value));
+			}
 		}
 
-		if (!node_value.get("<xmlcomment>", "").compare("BW_String"))
-			return rawDataBlock(BW_String, node_value.data()); 
-		return PackBuffer(node_value.data());
+		return serializeString(node_value);
 	}
 
 	BigWorld::DataDescriptor BWXMLWriter::BuildDescriptor(rawDataBlock block, uint32_t prevOffset) const
@@ -137,11 +150,12 @@ namespace BWPack
 		IO::StreamBufWriter outstream(outbuf.rdbuf());
 		outstream.put(BigWorld::PACKED_SECTION_MAGIC);
 		outstream.put<uint8_t>(0);
-		for (auto it = mStrings.begin(); it!= mStrings.end(); ++it)
-			outstream.putString(*it);
+		for (const auto& nodeName : mStrings)
+			outstream.putString(nodeName);
 		outstream.put<uint8_t>(0);
 
-		outstream.putString(serializeSection(mTree), false);
+		for (const auto& section : mTree)
+			outstream.putString(serializeSection(section), false);
 
 		std::ofstream mFile;
 		mFile.open(destname, std::ios::binary);
@@ -151,18 +165,32 @@ namespace BWPack
 		mFile.close();
 	}
 
-	std::string BWXMLWriter::serializeSection(const ptree& node) const
+	std::string BWXMLWriter::serializeSection(const pugi::xml_node& node) const
 	{
 		std::stringstream _ret;
 		IO::StreamBufWriter ret(_ret.rdbuf());
 
 		rawDataBlock ownData = serializeNode(node, true); // getting own plain content
 		dataArray childData;
-		for (auto it=node.begin(); it!=node.end(); ++it)
+		for (const auto& child : node)
 		{
-			if (!it->first.compare("<xmlcomment>")) // skipping comments
+			std::string resolvableString;
+
+			switch (child.type())
+			{
+			case pugi::node_comment: // skipping comments
 				continue;
-			childData.push_back(dataBlock(resolveString(it->first), serializeNode(it->second, false)));
+			case pugi::node_pcdata:
+				if (child == node.first_child())
+					continue;
+				throw std::runtime_error("Unexpected PCDATA");
+			case pugi::node_element:
+				resolvableString = child.name();
+				childData.push_back(dataBlock(resolveString(resolvableString), serializeNode(child, false)));
+				break;
+			default:
+				throw std::runtime_error("Incompatible node type in section");
+			}
 		}
 
 		if (childData.size() > std::numeric_limits<uint16_t>::max())

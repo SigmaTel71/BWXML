@@ -9,14 +9,12 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 set(BUILD_SHARED_LIBS OFF)
 
-if(NOT VCPKG_TOOLCHAIN)
-  set(Boost_USE_STATIC_LIBS ON)
-  set(Boost_USE_STATIC_RUNTIME ON)
-endif()
+find_package(pugixml CONFIG REQUIRED)
 
-# Boost
-find_package(Boost CONFIG COMPONENTS program_options serialization thread REQUIRED)
-include_directories(${Boost_INCLUDE_DIRS})
+set(TOBIASLOCKER_BASE64_INCLUDE "${TOBIASLOCKER_BASE64_DIR}/include")
+if (NOT EXISTS "${TOBIASLOCKER_BASE64_INCLUDE}/base64.hpp")
+    message(ERROR "Tobias Locker's Base64 header not found")
+endif()
 
 # Library
 set (BWXML_LIB_SOURCES "src/bwxml-lib/Base64.cpp"
@@ -25,13 +23,26 @@ set (BWXML_LIB_SOURCES "src/bwxml-lib/Base64.cpp"
                        "src/bwxml-lib/BWWriter.cpp"
                        "src/bwxml-lib/DataStream.cpp")
 add_library(libbwxml ${BWXML_LIB_SOURCES})
-target_link_libraries(libbwxml ${Boost_LIBRARIES})
+target_include_directories(libbwxml PRIVATE ${TOBIASLOCKER_BASE64_INCLUDE})
+target_link_libraries(libbwxml pugixml::pugixml)
 
 # CLI
-set (BWXML_CLI_SOURCES "src/bwxml-cli/main.cpp")
-add_executable(bwxml ${BWXML_CLI_SOURCES})
-target_include_directories(bwxml PRIVATE "src/bwxml-lib")
-target_link_libraries(bwxml libbwxml)
+option(BUILD_BWXML_TOOL "Build CLI BWXML tool" OFF)
+if (BUILD_BWXML_TOOL)
+    if (NOT VCPKG_TOOLCHAIN)
+      set(Boost_USE_STATIC_LIBS ON)
+      set(Boost_USE_STATIC_RUNTIME ON)
+    endif()
+
+    find_package(Boost CONFIG COMPONENTS program_options thread REQUIRED)
+    include_directories(${Boost_INCLUDE_DIRS})
+
+    add_executable(bwxml "src/bwxml-cli/main.cpp")
+    target_include_directories(bwxml PRIVATE "src/bwxml-lib")
+    target_link_libraries(bwxml ${Boost_LIBRARIES} libbwxml)
+
+    install(TARGETS bwxml RUNTIME DESTINATION bin)
+endif()
 
 #Python
 option(BUILD_PYTHON_MODULE "Build python module" ON)
@@ -47,11 +58,7 @@ if(BUILD_PYTHON_MODULE)
 endif()
 
 # Installation
-#
-install(
-    TARGETS libbwxml bwxml 
-    RUNTIME DESTINATION bin
-    ARCHIVE DESTINATION lib)
+install(TARGETS libbwxml ARCHIVE DESTINATION lib)
 
 #
 # CPack
@@ -69,7 +76,7 @@ set(CPACK_PACKAGE_VERSION_PATCH 0)
 set(CPACK_PACKAGE_VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}) 
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "A tool for packing and unpacking BigWorld compressed data sections from/to plain XML")
 set(CPACK_PACKAGE_FILE_NAME ${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_PACKAGE_ARCHITECTURE})
-set(CPACK_PACKAGE_CONTACT "Mikhail Paulyshka <me@mixaill.tk>")
+set(CPACK_PACKAGE_CONTACT "Vitaly Orekhov <vkvo2000@vivaldi.net>")
 
 include(CPack)
 
