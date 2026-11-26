@@ -36,18 +36,14 @@ target_link_libraries(bwxml libbwxml)
 #Python
 option(BUILD_PYTHON_MODULE "Build python module" ON)
 if(BUILD_PYTHON_MODULE)
-    find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+    find_package(Python COMPONENTS Interpreter Development REQUIRED)
     
-    add_library(bwxml-pyd SHARED "src/bwxml-python3/pythonModule.cpp")
+    add_library(bwxml-pyd SHARED "src/bwxml-python/pythonModule.cpp")
 
-    target_include_directories(bwxml-pyd PRIVATE ${Python3_INCLUDE_DIRS})
-    target_include_directories(bwxml-pyd PRIVATE "src/bwxml-lib")
+    target_include_directories(bwxml-pyd PRIVATE ${Python_INCLUDE_DIRS} "src/bwxml-lib")
+    target_link_libraries(bwxml-pyd libbwxml ${Python_LIBRARIES})
 
-    target_link_libraries(bwxml-pyd libbwxml)
-    target_link_libraries(bwxml-pyd ${Python3_LIBRARIES})
-
-    set_target_properties(bwxml-pyd PROPERTIES OUTPUT_NAME "bwxml")
-    set_target_properties(bwxml-pyd PROPERTIES SUFFIX ".pyd")
+    set_target_properties(bwxml-pyd PROPERTIES OUTPUT_NAME "bwxml" SUFFIX ".pyd")
 endif()
 
 # Installation

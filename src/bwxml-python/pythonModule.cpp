@@ -59,6 +59,7 @@ static PyMethodDef bwxml_methods[] = {
 
 const char bwxml_doc[] = "A BWXML library for python";
 
+#if PY_MAJOR_VERSION >= 3
 static struct PyModuleDef bwxml_module = {
    PyModuleDef_HEAD_INIT,
    "bwxml",
@@ -72,3 +73,10 @@ PyInit_bwxml(void)
 {
     return PyModule_Create(&bwxml_module);
 }
+#else
+PyMODINIT_FUNC
+initbwxml(void)
+{
+	Py_InitModule3("bwxml", bwxml_methods, bwxml_doc);
+}
+#endif
