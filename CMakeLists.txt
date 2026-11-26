@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.17.2)
+cmake_minimum_required(VERSION 3.19)
 project(BWXML)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -36,7 +36,7 @@ target_link_libraries(bwxml libbwxml)
 #Python
 option(BUILD_PYTHON_MODULE "Build python module" ON)
 if(BUILD_PYTHON_MODULE)
-    find_package(Python COMPONENTS Interpreter Development REQUIRED)
+    find_package(Python 2.6.4 COMPONENTS Interpreter Development REQUIRED)
     
     add_library(bwxml-pyd SHARED "src/bwxml-python/pythonModule.cpp")
 
